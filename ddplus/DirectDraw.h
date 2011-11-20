@@ -63,6 +63,7 @@ public:
 						DWORD dwColorKey );
 	static DWORD ConvertGDIColor( const LPDIRECTDRAWSURFACE7 m_pdds,
 									COLORREF dwGDIColor );
+	// スクリーンショットを保存
 	static HRESULT SaveSurfaceToBitmap(LPCTSTR pDestFile, LPDIRECTDRAWSURFACE7 pSrcSurface,
 						const PALETTEENTRY* pSrcPalette, const RECT* pSrcRect);
 

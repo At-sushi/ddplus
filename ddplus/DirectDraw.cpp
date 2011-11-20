@@ -645,12 +645,29 @@ HRESULT CDirectDrawPlus::Restore(void)
 	return ret;
 }
 
+static void SetBMIHeader(BITMAPINFO& bi, DDSURFACEDESC2& ddsd, DWORD &num_colors)
+{
+	bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	bi.bmiHeader.biWidth = ddsd.dwWidth;
+	bi.bmiHeader.biHeight = ddsd.dwHeight;
+	bi.bmiHeader.biPlanes = 1;
+	bi.bmiHeader.biBitCount = (WORD)ddsd.ddpfPixelFormat.dwRGBBitCount;
+	bi.bmiHeader.biCompression = BI_RGB;
+	bi.bmiHeader.biSizeImage = ((ddsd.lPitch+3)&~3) * ddsd.dwHeight;
+	bi.bmiHeader.biXPelsPerMeter = 72;
+	bi.bmiHeader.biYPelsPerMeter = 72;
+	bi.bmiHeader.biClrUsed = num_colors;
+	bi.bmiHeader.biClrImportant = num_colors;
+}
+
+// サーフェスをビットマップに保存
 HRESULT CDirectDrawPlus::SaveSurfaceToBitmap(LPCTSTR pDestFile, LPDIRECTDRAWSURFACE7 pSrcSurface, const PALETTEENTRY* pSrcPalette, const RECT* pSrcRect)
 {
 	HRESULT hRet;
 	HANDLE hFile = NULL, hMap = NULL;
 	HDC hDC, memDC = NULL;
 	HBITMAP hBMP = NULL;
+	HPALETTE hPalette = NULL;
 	DDSURFACEDESC2 ddsd;
 	BITMAPFILEHEADER bf;
 	union {
@@ -666,7 +683,11 @@ HRESULT CDirectDrawPlus::SaveSurfaceToBitmap(LPCTSTR pDestFile, LPDIRECTDRAWSURF
 	ddsd.dwSize = sizeof(DDSURFACEDESC2);
 	if (FAILED(hRet = pSrcSurface->GetSurfaceDesc(&ddsd)))
 		return hRet;
-	if (ddsd.ddpfPixelFormat.dwRGBBitCount == 32)
+
+	if (ddsd.ddpfPixelFormat.dwRGBBitCount > 8 && pSrcPalette)
+		ddsd.ddpfPixelFormat.dwRGBBitCount = 8;
+	else if (ddsd.ddpfPixelFormat.dwRGBBitCount == 32 ||
+		(ddsd.ddpfPixelFormat.dwRGBBitCount <= 8 && !pSrcPalette))
 		ddsd.ddpfPixelFormat.dwRGBBitCount = 24;	// 減色
 	DWORD num_colors = 1 << ddsd.ddpfPixelFormat.dwRGBBitCount;
 
@@ -674,21 +695,11 @@ HRESULT CDirectDrawPlus::SaveSurfaceToBitmap(LPCTSTR pDestFile, LPDIRECTDRAWSURF
 	bf.bfOffBits = sizeof(BITMAPFILEHEADER)+sizeof(BITMAPINFOHEADER);
 	bf.bfOffBits = (bf.bfOffBits + 3) & ~3;		// 整列するよ
 	if (ddsd.ddpfPixelFormat.dwRGBBitCount <= 8)
-		bf.bfOffBits += sizeof(RGBQUAD) * num_colors;
+		bf.bfOffBits += sizeof(PALETTEENTRY) * num_colors;
 	bf.bfSize = bf.bfOffBits + ((ddsd.lPitch+3)&~3) * ddsd.dwHeight;
 	bf.bfType = 'MB';
 
-	bi.bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-	bi.bi.bmiHeader.biWidth = ddsd.dwWidth;
-	bi.bi.bmiHeader.biHeight = ddsd.dwHeight;
-	bi.bi.bmiHeader.biPlanes = 1;
-	bi.bi.bmiHeader.biBitCount = (WORD)ddsd.ddpfPixelFormat.dwRGBBitCount;
-	bi.bi.bmiHeader.biCompression = BI_RGB;
-	bi.bi.bmiHeader.biSizeImage = ((ddsd.lPitch+3)&~3) * ddsd.dwHeight;
-	bi.bi.bmiHeader.biXPelsPerMeter = 72;
-	bi.bi.bmiHeader.biYPelsPerMeter = 72;
-	bi.bi.bmiHeader.biClrUsed = num_colors;
-	bi.bi.bmiHeader.biClrImportant = num_colors;
+	SetBMIHeader(bi.bi, ddsd, num_colors);
 
 	try
 	{
@@ -723,8 +734,8 @@ HRESULT CDirectDrawPlus::SaveSurfaceToBitmap(LPCTSTR pDestFile, LPDIRECTDRAWSURF
 		memcpy(mview+sizeof(bf), &bi.bi.bmiHeader, sizeof(bi.bi.bmiHeader));	// 情報ヘッダ
 		if (bi.bi.bmiHeader.biBitCount <= 8)
 		{
-			GetDIBColorTable(memDC, 0, num_colors, bi.bi.bmiColors);
-			memcpy(mview+sizeof(bf)+sizeof(bi.bi.bmiHeader), bi.bi.bmiColors, sizeof(RGBQUAD) * num_colors);	// パレット
+			SetDIBColorTable(memDC, 0, num_colors, (RGBQUAD*)pSrcPalette);
+			memcpy(mview+sizeof(bf)+sizeof(bi.bi.bmiHeader), pSrcPalette, sizeof(PALETTEENTRY) * num_colors);	// パレット
 		}
 		UnmapViewOfFile(mview);
 		mview = NULL;
