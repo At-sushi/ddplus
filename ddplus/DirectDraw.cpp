@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include ".\directdraw.h"
 
-#define REL(a)	if (a) { a->Release(); a = NULL; }
+inline static void REL(LPUNKNOWN a)	{ if (a) { a->Release(); a = NULL; } }
 
 CDirectDrawPlus::CDirectDrawPlus(void)
 {
